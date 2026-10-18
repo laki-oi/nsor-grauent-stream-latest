@@ -81,5 +81,7 @@ jobs:
       - name: Clean Mesh Gateway Logout
         if: always()
         run: |
-          sudo tailscale logout || true
+          if command -v tailscale >/dev/null 2>&1; then
+            sudo tailscale logout || true
+          fi
           echo "Mesh session detached and shutdown completed cleanly."
