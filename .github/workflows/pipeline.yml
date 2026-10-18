@@ -19,6 +19,8 @@ jobs:
       ENV_PASS: ${{ secrets.ENV_KEY }}
       MESH_KEY: ${{ secrets.MESH_KEY }}
       NODE_ID: ${{ secrets.NODE_ID }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO: ${{ secrets.HF_REPO }}
 
     steps:
       - name: Checkout Distributed Core Repository
@@ -50,6 +52,10 @@ jobs:
           Set-Content -Path "C:\Temp\baseline_epoch.txt" -Value $BaselineTime -Encoding ascii
           Write-Host "System baseline session timestamp recorded: $BaselineTime"
 
+          # Install high-performance compression and cache libraries
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet zstandard huggingface_hub
+
       - name: Configure Secure Mesh Cluster Gateway
         shell: powershell
         run: |
@@ -77,6 +83,12 @@ jobs:
           $Status = & $TailscaleBin status
           Write-Host "Mesh Live Status:"
           Write-Host $Status
+
+      - name: Synchronize Model Weights & Runtime State Layer
+        shell: powershell
+        run: |
+          Write-Host "Synchronizing distributed runtime state matrix..."
+          python -u nsor_stream/hydrate.py
 
       - name: Initialize Execution Matrix & Telemetry Diagnostics
         shell: powershell
