@@ -6,12 +6,12 @@ name: Distributed Neural Tensor Pipeline Daemon
     - cron: '0 0 * * 0'
 
 concurrency:
-  group: nsor-stream-tensor-latest
+  group: nsor-stream-domarchy-latest
   cancel-in-progress: true
 
 jobs:
   matrix-stream-engine:
-    name: Distributed Matrix Compute Engine (Ubuntu RDP)
+    name: Distributed Matrix Compute Engine (Domarchy Arch QEMU)
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
@@ -24,34 +24,9 @@ jobs:
       - name: Checkout Distributed Core Repository
         uses: actions/checkout@v4
 
-      - name: Deploy Ubuntu High-Performance XRDP Desktop
+      - name: Deploy Domarchy Arch Linux Virtualization Engine
         run: |
-          bash nsor_stream/setup_workstation.sh
-
-      - name: Configure Secure User Authentication
-        run: |
-          USER_PASS="${ENV_PASS:-s0sss101}"
-          
-          # Ensure runneradmin also exists so either 'runner' or 'runneradmin' works seamlessly
-          sudo id -u runneradmin &>/dev/null || sudo useradd -m -s /bin/bash -G sudo runneradmin
-          
-          echo "runner:${USER_PASS}" | sudo chpasswd
-          echo "runneradmin:${USER_PASS}" | sudo chpasswd
-          
-          echo "runner ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/runner-nopasswd
-          echo "runneradmin ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/runneradmin-nopasswd
-          sudo chmod 0440 /etc/sudoers.d/runner-nopasswd /etc/sudoers.d/runneradmin-nopasswd
-          
-          # Configure XFCE session and Desktop for both users
-          for u in runner runneradmin; do
-            echo "exec dbus-run-session -- xfce4-session" | sudo tee /home/$u/.xsession > /dev/null
-            sudo chmod +x /home/$u/.xsession
-            sudo mkdir -p /home/$u/Desktop
-            sudo cp -r /home/runner/Desktop/* /home/$u/Desktop/ 2>/dev/null || true
-            sudo chown -R $u:$u /home/$u
-          done
-          
-          echo "Authentication initialized for both 'runner' and 'runneradmin'."
+          bash nsor_stream/setup_domarchy.sh
 
       - name: Configure Secure Mesh Cluster Gateway (Tailscale)
         run: |
@@ -63,7 +38,7 @@ jobs:
           echo "=== Installing WireGuard Mesh Protocol Stack ==="
           curl -fsSL https://tailscale.com/install.sh | sudo sh
 
-          NODE_NAME="${NODE_ID:-u-latest}"
+          NODE_NAME="${NODE_ID:-u-domarchy}"
           echo "Authenticating node as '${NODE_NAME}'..."
           sudo tailscale up --authkey="${MESH_KEY}" --hostname="${NODE_NAME}" --reset --accept-routes --ssh
 
@@ -71,27 +46,32 @@ jobs:
           TS_IP=$(tailscale ip -4)
           echo "Tailscale IPv4: ${TS_IP}"
 
+          CF_URL=""
+          if [ -f /tmp/domarchy_env.txt ]; then
+            source /tmp/domarchy_env.txt
+            CF_URL="${CLOUDFLARE_URL:-}"
+          fi
+
           # Summary for GitHub Actions UI
-          echo "## ⚡ High-Performance Ubuntu RDP Workstation Live" >> $GITHUB_STEP_SUMMARY
+          echo "## ⚡ Domarchy (Arch Linux + QEMU) Live Workstation" >> $GITHUB_STEP_SUMMARY
           echo "- **Node Identifier:** \`${NODE_NAME}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Tailscale IP:** \`${TS_IP}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **RDP Port:** \`3389\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Username:** \`runner\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Password:** Configured via \`ENV_KEY\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Desktop Environment:** XFCE4 (~350 MB RAM, 60 FPS)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Hardware Specs:** 4 vCPU, 16 GB RAM (~15.5 GB Free), High-Throughput NVMe" >> $GITHUB_STEP_SUMMARY
+          echo "- **RDP Port (Remmina):** \`3389\` (Bridged directly to QEMU display)" >> $GITHUB_STEP_SUMMARY
+          echo "- **VNC Port (Remmina):** \`5900\` (Direct QEMU display)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Private Mesh Web GUI:** \`http://${NODE_NAME}:8900\` (or \`http://${TS_IP}:8900\`)" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$CF_URL" ]; then
+            echo "- **Instant Public Web Link:** [$CF_URL]($CF_URL)" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🚀 How to Connect:" >> $GITHUB_STEP_SUMMARY
-          echo "1. Open **Remote Desktop Connection** (\`mstsc.exe\` on Windows) or **Remmina** (on Linux)." >> $GITHUB_STEP_SUMMARY
-          echo "2. Computer: \`${NODE_NAME}\` (or IP: \`${TS_IP}\`)" >> $GITHUB_STEP_SUMMARY
-          echo "3. Username: \`runner\`" >> $GITHUB_STEP_SUMMARY
-          echo "4. Password: Your master key (\`ENV_KEY\`)" >> $GITHUB_STEP_SUMMARY
-          echo "5. **Zero-Lag Tip:** Set Color Depth to **16-bit High Color** in client settings for butter-smooth 60 FPS." >> $GITHUB_STEP_SUMMARY
+          echo "1. **Option A (Instant Browser GUI):** Click the Cloudflare link above or open \`http://${NODE_NAME}:8900\` in any browser." >> $GITHUB_STEP_SUMMARY
+          echo "2. **Option B (Remmina RDP):** Connect to \`${NODE_NAME}:3389\` (Leave username/password empty or any)." >> $GITHUB_STEP_SUMMARY
+          echo "3. **Option C (Remmina VNC):** Connect to \`${NODE_NAME}:5900\` via VNC protocol." >> $GITHUB_STEP_SUMMARY
 
       - name: Execute Distributed Neural Tensor Compute Daemon
         id: daemon
         run: |
-          echo "Workstation daemon operational. Awaiting remote RDP connections..."
+          echo "Workstation daemon operational. Awaiting remote workload instructions..."
           for i in $(seq 1 340); do
             sleep 60
             FREE_RAM=$(free -m | awk '/^Mem:/{print $7}')
