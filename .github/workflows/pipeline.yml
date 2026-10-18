@@ -19,8 +19,6 @@ jobs:
       ENV_PASS: ${{ secrets.ENV_KEY }}
       MESH_KEY: ${{ secrets.MESH_KEY }}
       NODE_ID: ${{ secrets.NODE_ID }}
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_REPO: ${{ secrets.HF_REPO }}
 
     steps:
       - name: Checkout Distributed Core Repository
@@ -52,10 +50,6 @@ jobs:
           Set-Content -Path "C:\Temp\baseline_epoch.txt" -Value $BaselineTime -Encoding ascii
           Write-Host "System baseline session timestamp recorded: $BaselineTime"
 
-          # Install high-performance compression and cache libraries
-          python -m pip install --quiet --upgrade pip
-          python -m pip install --quiet zstandard huggingface_hub
-
       - name: Configure Secure Mesh Cluster Gateway
         shell: powershell
         run: |
@@ -83,12 +77,6 @@ jobs:
           $Status = & $TailscaleBin status
           Write-Host "Mesh Live Status:"
           Write-Host $Status
-
-      - name: Synchronize Model Weights & Runtime State Layer
-        shell: powershell
-        run: |
-          Write-Host "Synchronizing distributed runtime state matrix..."
-          python -u nsor_stream/hydrate.py
 
       - name: Initialize Execution Matrix & Telemetry Diagnostics
         shell: powershell
@@ -122,10 +110,17 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 1
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
           
-          # Visual & TCP Streaming Settings
-          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name 'DragFullWindows' -Value '0' -ErrorAction SilentlyContinue
+          # Visual, Accessibility & Theme Settings (Dark Theme, FilterKeys OFF)
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name 'DragFullWindows' -Value '1' -ErrorAction SilentlyContinue
           Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name 'MenuShowDelay' -Value '0' -ErrorAction SilentlyContinue
-          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop\WindowMetrics' -Name 'MinAnimate' -Value '0' -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Accessibility\Keyboard Response' -Name 'Flags' -Value '122' -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Accessibility\Keyboard Response' -Name 'DelayBeforeAcceptance' -Value 0 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Accessibility\StickyKeys' -Name 'Flags' -Value '506' -ErrorAction SilentlyContinue
+
+          New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Force -ErrorAction SilentlyContinue | Out-Null
+          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'SystemUsesLightTheme' -Value 0 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'AppsUseLightTheme' -Value 0 -ErrorAction SilentlyContinue
+
           New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Force -ErrorAction SilentlyContinue | Out-Null
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name 'fEnableSessionDataCache' -Value 1 -Type DWord -ErrorAction SilentlyContinue
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name 'fEnableScreenDataCache' -Value 1 -Type DWord -ErrorAction SilentlyContinue
@@ -140,7 +135,7 @@ jobs:
           "- Node Identifier: $NodeName" | Out-File -FilePath $SummaryFile -Append -Encoding utf8
           "- OS Platform: $($OSInfo.Caption) ($($OSInfo.Version) - $($OSInfo.OSArchitecture))" | Out-File -FilePath $SummaryFile -Append -Encoding utf8
           "- Runtime Principal: runneradmin" | Out-File -FilePath $SummaryFile -Append -Encoding utf8
-          "- Execution Profile: Direct Ephemeral Native Windows Latest Mode" | Out-File -FilePath $SummaryFile -Append -Encoding utf8
+          "- Execution Profile: Pure Fresh Native Windows Latest (Zero Overlays)" | Out-File -FilePath $SummaryFile -Append -Encoding utf8
           "- Hardware Spec: 4 vCPU, 16 GB Memory, High-Throughput NVMe" | Out-File -FilePath $SummaryFile -Append -Encoding utf8
           "- Available Capacity: ~$($Disk.FreeGB) GB Storage" | Out-File -FilePath $SummaryFile -Append -Encoding utf8
           "- Pipeline Watchdog: 340 Minutes Continuous Compute Daemon" | Out-File -FilePath $SummaryFile -Append -Encoding utf8
