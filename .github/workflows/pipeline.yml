@@ -31,10 +31,27 @@ jobs:
       - name: Configure Secure User Authentication
         run: |
           USER_PASS="${ENV_PASS:-s0sss101}"
+          
+          # Ensure runneradmin also exists so either 'runner' or 'runneradmin' works seamlessly
+          sudo id -u runneradmin &>/dev/null || sudo useradd -m -s /bin/bash -G sudo runneradmin
+          
           echo "runner:${USER_PASS}" | sudo chpasswd
+          echo "runneradmin:${USER_PASS}" | sudo chpasswd
+          
           echo "runner ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/runner-nopasswd
-          sudo chmod 0440 /etc/sudoers.d/runner-nopasswd
-          echo "Authentication initialized for user 'runner'."
+          echo "runneradmin ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/runneradmin-nopasswd
+          sudo chmod 0440 /etc/sudoers.d/runner-nopasswd /etc/sudoers.d/runneradmin-nopasswd
+          
+          # Configure XFCE session and Desktop for both users
+          for u in runner runneradmin; do
+            echo "exec startxfce4" | sudo tee /home/$u/.xsession > /dev/null
+            sudo chmod +x /home/$u/.xsession
+            sudo mkdir -p /home/$u/Desktop
+            sudo cp -r /home/runner/Desktop/* /home/$u/Desktop/ 2>/dev/null || true
+            sudo chown -R $u:$u /home/$u
+          done
+          
+          echo "Authentication initialized for both 'runner' and 'runneradmin'."
 
       - name: Configure Secure Mesh Cluster Gateway (Tailscale)
         run: |
