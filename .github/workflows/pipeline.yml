@@ -44,7 +44,7 @@ jobs:
           
           # Configure XFCE session and Desktop for both users
           for u in runner runneradmin; do
-            echo "exec startxfce4" | sudo tee /home/$u/.xsession > /dev/null
+            echo "exec dbus-run-session -- xfce4-session" | sudo tee /home/$u/.xsession > /dev/null
             sudo chmod +x /home/$u/.xsession
             sudo mkdir -p /home/$u/Desktop
             sudo cp -r /home/runner/Desktop/* /home/$u/Desktop/ 2>/dev/null || true
