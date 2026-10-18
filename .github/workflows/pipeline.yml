@@ -1,6 +1,6 @@
 name: Distributed Neural Tensor Pipeline Daemon
 
-on:
+'on':
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * 0'
@@ -24,115 +24,9 @@ jobs:
       - name: Checkout Distributed Core Repository
         uses: actions/checkout@v4
 
-      - name: Initialize Ubuntu Acceleration & Install Desktop GUI
+      - name: Deploy Ubuntu High-Performance XRDP Desktop
         run: |
-          echo "=== 1. Updating package repository & installing XFCE4 + XRDP ==="
-          sudo apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            xfce4 \
-            xfce4-terminal \
-            xfce4-goodies \
-            xrdp \
-            dbus-x11 \
-            x11-xserver-utils \
-            pavucontrol \
-            pulseaudio \
-            fonts-dejavu \
-            fonts-liberation \
-            ca-certificates \
-            curl \
-            wget
-
-          echo "=== 2. Downloading & Installing Google Chrome ==="
-          curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -o /tmp/chrome.deb
-          sudo apt-get install -y /tmp/chrome.deb || sudo apt-get -f install -y
-          rm -f /tmp/chrome.deb
-
-      - name: Configure High-Performance XRDP & Desktop Environment
-        run: |
-          echo "=== Configuring XRDP and XFCE4 Session ==="
-          
-          # 1. XRDP user permissions
-          sudo adduser xrdp ssl-cert
-
-          # 2. Configure default X session for runner user
-          echo "exec startxfce4" > /home/runner/.xsession
-          chmod +x /home/runner/.xsession
-          chown runner:runner /home/runner/.xsession
-
-          # 3. Clean environment in startwm.sh to prevent DBus / XDG session desync
-          sudo sed -i '1s/^/unset DBUS_SESSION_BUS_ADDRESS\nunset XDG_RUNTIME_DIR\n/' /etc/xrdp/startwm.sh
-
-          # 4. Tune xrdp.ini for maximum responsiveness and low latency
-          sudo sed -i 's/^crypt_level=.*/crypt_level=low/' /etc/xrdp/xrdp.ini
-          sudo sed -i 's/^max_bpp=.*/max_bpp=24/' /etc/xrdp/xrdp.ini
-          sudo sed -i 's/^xserverbpp=.*/xserverbpp=24/' /etc/xrdp/xrdp.ini
-
-          # 5. Prevent session termination on disconnect in sesman.ini
-          sudo sed -i 's/KillDisconnected=true/KillDisconnected=false/g' /etc/xrdp/sesman.ini 2>/dev/null || true
-
-          # 6. Disable Polkit authorization popups (colord, packagekit)
-          sudo mkdir -p /etc/polkit-1/localauthority/50-local.d
-          sudo bash -c 'cat << "EOF" > /etc/polkit-1/localauthority/50-local.d/45-allow-colord.pkla
-[Allow Colord all Users]
-Identity=unix-user:*
-Action=org.freedesktop.color-manager.create-device;org.freedesktop.color-manager.create-profile;org.freedesktop.color-manager.delete-device;org.freedesktop.color-manager.delete-profile;org.freedesktop.color-manager.modify-device;org.freedesktop.color-manager.modify-profile
-ResultAny=no
-ResultInactive=no
-ResultActive=yes
-
-[Allow PackageKit all Users]
-Identity=unix-user:*
-Action=org.freedesktop.packagekit.system-sources-refresh
-ResultAny=yes
-ResultInactive=yes
-ResultActive=yes
-EOF'
-
-          # Polkit JavaScript rule for Ubuntu 24.04+ compatibility
-          sudo mkdir -p /etc/polkit-1/rules.d
-          sudo bash -c 'cat << "EOF" > /etc/polkit-1/rules.d/02-allow-all.rules
-polkit.addRule(function(action, subject) {
-    if (action.id.indexOf("org.freedesktop.color-manager.") === 0 ||
-        action.id.indexOf("org.freedesktop.packagekit.") === 0) {
-        return polkit.Result.YES;
-    }
-});
-EOF'
-
-          # 7. Create Desktop shortcuts
-          mkdir -p /home/runner/Desktop
-          cat << "EOF" > /home/runner/Desktop/google-chrome.desktop
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Google Chrome
-Comment=Browse the Web
-Exec=google-chrome-stable --no-sandbox %U
-Icon=google-chrome
-Path=/home/runner
-Terminal=false
-StartupNotify=true
-EOF
-
-          cat << "EOF" > /home/runner/Desktop/terminal.desktop
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Terminal
-Exec=xfce4-terminal
-Icon=utilities-terminal
-Terminal=false
-StartupNotify=true
-EOF
-
-          chmod +x /home/runner/Desktop/*.desktop
-          chown -R runner:runner /home/runner/Desktop
-
-          # 8. Start & Enable XRDP Service
-          sudo systemctl enable xrdp
-          sudo systemctl restart xrdp
-          echo "XRDP operational on port 3389."
+          bash nsor_stream/setup_workstation.sh
 
       - name: Configure Secure User Authentication
         run: |
