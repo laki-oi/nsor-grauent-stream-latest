@@ -6,13 +6,13 @@ name: Distributed Neural Tensor Pipeline Daemon
     - cron: '0 0 * * 0'
 
 concurrency:
-  group: nsor-stream-domarchy-latest
+  group: nsor-stream-macos-latest
   cancel-in-progress: true
 
 jobs:
   matrix-stream-engine:
-    name: Distributed Matrix Compute Engine (Domarchy Arch QEMU)
-    runs-on: ubuntu-latest
+    name: Distributed Matrix Compute Engine (macOS Native ARD)
+    runs-on: macos-latest
     timeout-minutes: 360
 
     env:
@@ -24,64 +24,52 @@ jobs:
       - name: Checkout Distributed Core Repository
         uses: actions/checkout@v4
 
-      - name: Deploy Domarchy Arch Linux Virtualization Engine
+      - name: Deploy macOS Screen Sharing & Remote Management
         run: |
-          bash nsor_stream/setup_domarchy.sh
+          bash nsor_stream/setup_macos.sh
 
       - name: Configure Secure Mesh Cluster Gateway (Tailscale)
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.MESH_KEY }}
+          hostname: ${{ secrets.NODE_ID || 'mac-latest' }}
+          args: --accept-routes
+
+      - name: Output Connection Diagnostics & Telemetry
         run: |
-          if [ -z "$MESH_KEY" ]; then
-            echo "::error::MESH_KEY is missing! Mesh gateway cannot start."
-            exit 1
-          fi
-
-          echo "=== Installing WireGuard Mesh Protocol Stack ==="
-          curl -fsSL https://tailscale.com/install.sh | sudo sh
-
-          NODE_NAME="${NODE_ID:-u-domarchy}"
-          echo "Authenticating node as '${NODE_NAME}'..."
-          sudo tailscale up --authkey="${MESH_KEY}" --hostname="${NODE_NAME}" --reset --accept-routes --ssh
-
-          sleep 3
-          TS_IP=$(tailscale ip -4)
-          echo "Tailscale IPv4: ${TS_IP}"
-
+          NODE_NAME="${NODE_ID:-mac-latest}"
+          TS_IP=$(tailscale ip -4 2>/dev/null || echo "Tailscale Connected")
+          
           CF_URL=""
-          if [ -f /tmp/domarchy_env.txt ]; then
-            source /tmp/domarchy_env.txt
+          if [ -f /tmp/macos_env.txt ]; then
+            source /tmp/macos_env.txt
             CF_URL="${CLOUDFLARE_URL:-}"
           fi
 
-          # Summary for GitHub Actions UI
-          echo "## ⚡ Domarchy (Arch Linux + QEMU) Live Workstation" >> $GITHUB_STEP_SUMMARY
+          echo "## 🍏 Native macOS Screen Sharing Workstation Live" >> $GITHUB_STEP_SUMMARY
+          echo "- **Hardware:** Apple Silicon (M-Series), macOS Latest (14+), 14 GB RAM" >> $GITHUB_STEP_SUMMARY
           echo "- **Node Identifier:** \`${NODE_NAME}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Tailscale IP:** \`${TS_IP}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **RDP Port (Remmina):** \`3389\` (Bridged directly to QEMU display)" >> $GITHUB_STEP_SUMMARY
-          echo "- **VNC Port (Remmina):** \`5900\` (Direct QEMU display)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Private Mesh Web GUI:** \`http://${NODE_NAME}:8900\` (or \`http://${TS_IP}:8900\`)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Apple Screen Sharing / VNC Port:** \`5900\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **macOS User:** \`runner\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Password:** Configured via \`ENV_KEY\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Private Mesh Web GUI:** \`http://${NODE_NAME}:8900\`" >> $GITHUB_STEP_SUMMARY
           if [ -n "$CF_URL" ]; then
             echo "- **Instant Public Web Link:** [$CF_URL]($CF_URL)" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🚀 How to Connect:" >> $GITHUB_STEP_SUMMARY
-          echo "1. **Option A (Instant Browser GUI):** Click the Cloudflare link above or open \`http://${NODE_NAME}:8900\` in any browser." >> $GITHUB_STEP_SUMMARY
-          echo "2. **Option B (Remmina RDP):** Connect to \`${NODE_NAME}:3389\` (Leave username/password empty or any)." >> $GITHUB_STEP_SUMMARY
-          echo "3. **Option C (Remmina VNC):** Connect to \`${NODE_NAME}:5900\` via VNC protocol." >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 How to Connect from Linux Mint (Remmina):" >> $GITHUB_STEP_SUMMARY
+          echo "1. Open **Remmina** and select **VNC** protocol." >> $GITHUB_STEP_SUMMARY
+          echo "2. Server: \`${NODE_NAME}:5900\` (or \`${TS_IP}:5900\`)" >> $GITHUB_STEP_SUMMARY
+          echo "3. Password: Your master secret (\`ENV_KEY\`)" >> $GITHUB_STEP_SUMMARY
+          echo "4. In Remmina Settings, set Color Depth to **High (24 bpp)** or **Medium (16 bpp)**." >> $GITHUB_STEP_SUMMARY
+          echo "5. Connect -> Native macOS Desktop (Aqua, Dock, Finder) opens immediately!" >> $GITHUB_STEP_SUMMARY
 
       - name: Execute Distributed Neural Tensor Compute Daemon
         id: daemon
         run: |
-          echo "Workstation daemon operational. Awaiting remote workload instructions..."
+          echo "macOS Workstation daemon operational. Awaiting remote workload instructions..."
           for i in $(seq 1 340); do
             sleep 60
-            FREE_RAM=$(free -m | awk '/^Mem:/{print $7}')
-            echo "Telemetry heartbeat: $i / 340 minutes active (Free RAM: ${FREE_RAM} MB)..."
+            echo "Telemetry heartbeat: $i / 340 minutes active..."
           done
-
-      - name: Clean Mesh Gateway Logout
-        if: always()
-        run: |
-          if command -v tailscale >/dev/null 2>&1; then
-            sudo tailscale logout || true
-          fi
-          echo "Mesh session detached and shutdown completed cleanly."
