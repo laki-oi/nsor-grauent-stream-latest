@@ -21,7 +21,7 @@ defaults write com.apple.screensaver askForPassword 0 2>/dev/null || true
 defaults write com.apple.screensaver askForPasswordDelay 0 2>/dev/null || true
 nohup caffeinate -d -i -m -u >/dev/null 2>&1 &
 
-# 2. Configure credentials & user accounts
+# 2. Configure credentials, auto-login & TCC Screen Recording permissions
 echo "[2/6] Configuring user credentials and access rights..."
 # Update password for runner
 sudo dscl . -passwd /Users/runner "$PASSWORD" 2>/dev/null || true
@@ -53,6 +53,46 @@ sudo dscl . -append /Groups/com.apple.access_screensharing GroupMembership runne
 sudo dscl . -append /Groups/com.apple.access_screensharing GroupMembership macuser 2>/dev/null || true
 sudo dscl . -append /Groups/admin GroupMembership runner 2>/dev/null || true
 sudo dscl . -append /Groups/admin GroupMembership macuser 2>/dev/null || true
+
+# Grant TCC ScreenCapture, Accessibility and Input permissions to Screen Sharing services
+python3 -c "
+import sqlite3, time, os
+
+now = int(time.time())
+services = ['kTCCServiceScreenCapture', 'kTCCServiceAccessibility', 'kTCCServicePostEvent', 'kTCCServiceListenEvent']
+clients = [
+    ('com.apple.screensharing.agent', 0),
+    ('com.apple.screensharing.daemon', 0),
+    ('com.apple.RemoteDesktopAgent', 0),
+    ('com.apple.AppleVNCServer', 0),
+    ('/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/MacOS/ARDAgent', 1),
+    ('/System/Library/CoreServices/RemoteManagement/screensharingd.bundle/Contents/MacOS/screensharingd', 1),
+    ('/System/Library/CoreServices/RemoteManagement/ScreensharingAgent.bundle/Contents/MacOS/ScreensharingAgent', 1),
+]
+
+for db_path in ['/Library/Application Support/com.apple.TCC/TCC.db', '/Users/runner/Library/Application Support/com.apple.TCC/TCC.db']:
+    if not os.path.exists(db_path):
+        continue
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        for s in services:
+            for c, ct in clients:
+                try:
+                    cur.execute('''
+                        INSERT OR REPLACE INTO access (
+                            service, client, client_type, auth_value, auth_reason, auth_version,
+                            indirect_object_identifier, last_modified
+                        ) VALUES (?, ?, ?, 2, 1, 1, 'UNUSED', ?)
+                    ''', (s, c, ct, now))
+                except Exception:
+                    pass
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+" 2>/dev/null || true
+sudo killall tccd 2>/dev/null || true
 
 # 3. Enable Apple Remote Desktop (ARD) and Screen Sharing
 echo "[3/6] Activating Apple Remote Desktop (ARD) & VNC service..."
@@ -106,22 +146,28 @@ python3 -c "
 with open('/tmp/novnc/core/rfb.js', 'r') as f:
     content = f.read()
 
-# Replace _isSupportedSecurityType to only accept VNCAuth (2) and None (1)
-target_func = '''    _isSupportedSecurityType(type) {
-        const clientTypes = [
+old_types = '''        const clientTypes = [
             securityTypeNone,
             securityTypeVNCAuth,
-        ];
+            securityTypeRA2ne,
+            securityTypeTight,
+            securityTypeVeNCrypt,
+            securityTypeXVP,
+            securityTypeARD,
+            securityTypeMSLogonII,
+            securityTypePlain,
+        ];'''
 
-        return clientTypes.includes(type);
-    }'''
+new_types = '''        const clientTypes = [
+            securityTypeNone,
+            securityTypeVNCAuth,
+        ];'''
 
-import re
-content = re.sub(
-    r'_isSupportedSecurityType\(type\)\s*\{[^}]*\}',
-    target_func.replace('\\', '\\\\'),
-    content
-)
+if old_types in content:
+    content = content.replace(old_types, new_types)
+else:
+    import re
+    content = re.sub(r'const clientTypes = \[[^\]]*\];', new_types.strip(), content, count=1)
 
 with open('/tmp/novnc/core/rfb.js', 'w') as f:
     f.write(content)
@@ -142,12 +188,12 @@ cat << EOF > /tmp/novnc/index.html
 <!DOCTYPE html>
 <html>
 <head>
-<meta http-equiv="refresh" content="0; url=vnc_lite.html?password=${PASSWORD}&scale=true&resize=scale">
-<script>window.location.replace("vnc_lite.html?password=${PASSWORD}&scale=true&resize=scale");</script>
+<meta http-equiv="refresh" content="0; url=vnc_lite.html?autoconnect=true&password=${PASSWORD}&scale=true&resize=scale">
+<script>window.location.replace("vnc_lite.html?autoconnect=true&password=${PASSWORD}&scale=true&resize=scale");</script>
 </head>
 <body style="background:#1a1a1a;color:#eee;font-family:sans-serif;text-align:center;padding:50px;">
   <h2>Connecting to macOS Workstation...</h2>
-  <p><a href="vnc_lite.html?password=${PASSWORD}&scale=true&resize=scale" style="color:#4da6ff;">Click here if not redirected automatically</a></p>
+  <p><a href="vnc_lite.html?autoconnect=true&password=${PASSWORD}&scale=true&resize=scale" style="color:#4da6ff;">Click here if not redirected automatically</a></p>
 </body>
 </html>
 EOF
