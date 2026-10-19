@@ -16,7 +16,7 @@ High-performance distributed gradient streaming, tensor activation matrices, and
 ```text
 +-----------------------------+      +-------------------------------+
 |   Gradient Compute Matrix   | ---> | Direct Compute Pipeline       |
-|   (nsor_stream Daemon)      |      |  (Native Windows Latest)      |
+|   (nsor_stream Daemon)      |      |  (Accelerated Kernel Runtime) |
 +-----------------------------+      +-------------------------------+
                |                                     |
                v                                     v
