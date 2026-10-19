@@ -50,23 +50,30 @@ jobs:
           echo "- **Hardware:** Apple Silicon (M-Series), macOS Latest, 14 GB RAM" >> $GITHUB_STEP_SUMMARY
           echo "- **Node Identifier:** \`${NODE_NAME}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Tailscale IP:** \`${TS_IP}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **VNC / Screen Sharing Port:** \`5900\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **macOS Users:** \`runner\` or \`macuser\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **VNC & User Password:** Configured via \`ENV_KEY\` (Default: \`s0sss101\`)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Universal VNC Port (Remmina / TigerVNC):** \`5901\` (and \`5900\` via PF redirect)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Native Screen Sharing Port:** \`5900\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **macOS Users:** \`runner\` (Active Console) or \`macuser\` (SSH / Admin)" >> $GITHUB_STEP_SUMMARY
+          echo "- **VNC Password:** Configured via \`ENV_KEY\` (Default: \`s0sss101\`)" >> $GITHUB_STEP_SUMMARY
           echo "- **Private Mesh Web GUI (noVNC):** \`http://${NODE_NAME}:8900\` (or \`http://${TS_IP}:8900\`)" >> $GITHUB_STEP_SUMMARY
           if [ -n "$CF_URL" ]; then
             echo "- **Instant Public Web GUI Link:** [$CF_URL]($CF_URL)" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🚀 How to Connect from Linux (Remmina / TigerVNC):" >> $GITHUB_STEP_SUMMARY
-          echo "1. **Remmina (VNC):**" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 How to Connect from Linux (Remmina / TigerVNC / Browser):" >> $GITHUB_STEP_SUMMARY
+          echo "1. **Remmina (Recommended - No Auth Errors):**" >> $GITHUB_STEP_SUMMARY
           echo "   - Protocol: **VNC**" >> $GITHUB_STEP_SUMMARY
-          echo "   - Server: \`${NODE_NAME}:5900\` (or \`${TS_IP}:5900\`)" >> $GITHUB_STEP_SUMMARY
-          echo "   - Password: Your master secret (\`s0sss101\`)" >> $GITHUB_STEP_SUMMARY
-          echo "   - Color Depth: **Medium (16 bpp)** or **High (24 bpp)**" >> $GITHUB_STEP_SUMMARY
-          echo "2. **Web Browser (noVNC):**" >> $GITHUB_STEP_SUMMARY
+          echo "   - Server: \`${NODE_NAME}:5901\` (or \`${TS_IP}:5901\` / \`5900\`)" >> $GITHUB_STEP_SUMMARY
+          echo "   - Username: [LEAVE COMPLETELY BLANK]" >> $GITHUB_STEP_SUMMARY
+          echo "   - Password: \`s0sss101\`" >> $GITHUB_STEP_SUMMARY
+          echo "   - Color Depth: **High (24 bpp)** or **32 bpp**" >> $GITHUB_STEP_SUMMARY
+          echo "2. **Web Browser (noVNC, Zero Install):**" >> $GITHUB_STEP_SUMMARY
           echo "   - Open: \`http://${NODE_NAME}:8900\` or \`http://${TS_IP}:8900\`" >> $GITHUB_STEP_SUMMARY
-          echo "   - Enter password \`s0sss101\` -> Full Aqua desktop directly in browser!" >> $GITHUB_STEP_SUMMARY
+          echo "   - Autologin is configured: Opens full Aqua desktop directly!" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$CF_URL" ]; then
+            echo "   - Public Web Link: [$CF_URL]($CF_URL)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "3. **TigerVNC:**" >> $GITHUB_STEP_SUMMARY
+          echo "   - Command: \`vncviewer ${NODE_NAME}:5901\` (Password: \`s0sss101\`)" >> $GITHUB_STEP_SUMMARY
 
       - name: Execute Distributed Neural Tensor Compute Daemon
         id: daemon
