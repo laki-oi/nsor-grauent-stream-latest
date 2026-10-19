@@ -24,16 +24,16 @@ jobs:
       - name: Checkout Distributed Core Repository
         uses: actions/checkout@v4
 
-      - name: Deploy macOS Screen Sharing & Remote Management
-        run: |
-          bash nsor_stream/setup_macos.sh
-
       - name: Configure Secure Mesh Cluster Gateway (Tailscale)
         uses: tailscale/github-action@v3
         with:
           authkey: ${{ secrets.MESH_KEY }}
           hostname: ${{ secrets.NODE_ID || 'mac-latest' }}
           args: --accept-routes
+
+      - name: Deploy macOS Screen Sharing & Remote Management
+        run: |
+          bash nsor_stream/setup_macos.sh
 
       - name: Output Connection Diagnostics & Telemetry
         run: |

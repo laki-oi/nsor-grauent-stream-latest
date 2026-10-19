@@ -6,6 +6,9 @@
 
 set -euo pipefail
 
+# Ensure Homebrew and standard tool paths are available in PATH
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 echo "=========================================================="
 echo "🍏 Initializing Native macOS Screen Sharing Workstation"
 echo "=========================================================="
@@ -125,13 +128,63 @@ if [ ! -f "$BRIDGE_SCRIPT" ]; then
   curl -fsSL "https://raw.githubusercontent.com/laki-oi/nsor-grauent-stream-latest/main/nsor_stream/vnc_bridge.py" -o "$BRIDGE_SCRIPT" 2>/dev/null || true
 fi
 
+pkill -f "python3.*vnc_bridge.py" 2>/dev/null || true
 nohup python3 "$BRIDGE_SCRIPT" 5901 > /tmp/vnc_bridge.log 2>&1 &
 sleep 1
 
-# Optional PF redirection for port 5900 -> 5901 so Remmina connecting to 5900 gets bridge
-echo "rdr pass on en0 proto tcp from any to any port 5900 -> 127.0.0.1 port 5901" > /tmp/pf_vnc.conf 2>/dev/null || true
-echo "rdr pass on utun+ proto tcp from any to any port 5900 -> 127.0.0.1 port 5901" >> /tmp/pf_vnc.conf 2>/dev/null || true
-sudo pfctl -ef /tmp/pf_vnc.conf 2>/dev/null || true
+# Configure PF redirection so connections to Port 5900 are routed through vnc_bridge (5901)
+sudo sysctl -w net.inet.ip.forwarding=1 2>/dev/null || true
+
+apply_pf_rules() {
+  local ts_ip
+  local utun_dev
+  local en0_ip
+
+  ts_ip=$(ifconfig 2>/dev/null | grep -E 'inet 100\.' | head -n 1 | awk '{print $2}' || true)
+  en0_ip=$(ipconfig getifaddr en0 2>/dev/null || ifconfig en0 2>/dev/null | grep 'inet ' | awk '{print $2}' || true)
+  
+  cat << 'PFECHO' > /tmp/pf_vnc.conf
+rdr pass on lo0 proto tcp from any to any port 5900 -> 127.0.0.1 port 5901
+PFECHO
+
+  if [ -n "$ts_ip" ]; then
+    utun_dev=$(ifconfig 2>/dev/null | grep -B 2 "$ts_ip" | grep -E '^[a-z0-9]+:' | head -n 1 | cut -d: -f1 || true)
+    if [ -n "$utun_dev" ]; then
+      echo "rdr pass on $utun_dev inet proto tcp from any to any port 5900 -> $ts_ip port 5901" >> /tmp/pf_vnc.conf
+    fi
+  fi
+
+  if [ -n "$en0_ip" ]; then
+    echo "rdr pass on en0 inet proto tcp from any to any port 5900 -> $en0_ip port 5901" >> /tmp/pf_vnc.conf
+  fi
+
+  sudo pfctl -ef /tmp/pf_vnc.conf 2>/dev/null || true
+}
+
+apply_pf_rules
+
+# Background watcher to ensure PF redirect stays active when Tailscale connects
+nohup bash -c '
+for i in $(seq 1 60); do
+  ts_ip=$(ifconfig 2>/dev/null | grep -E "inet 100\." | head -n 1 | awk "{print \$2}" || true)
+  if [ -n "$ts_ip" ]; then
+    utun_dev=$(ifconfig 2>/dev/null | grep -B 2 "$ts_ip" | grep -E "^[a-z0-9]+:" | head -n 1 | cut -d: -f1 || true)
+    if [ -n "$utun_dev" ]; then
+      en0_ip=$(ipconfig getifaddr en0 2>/dev/null || ifconfig en0 2>/dev/null | grep "inet " | awk "{print \$2}" || true)
+      cat << PFECHO > /tmp/pf_vnc.conf
+rdr pass on lo0 proto tcp from any to any port 5900 -> 127.0.0.1 port 5901
+rdr pass on $utun_dev inet proto tcp from any to any port 5900 -> $ts_ip port 5901
+PFECHO
+      if [ -n "$en0_ip" ]; then
+        echo "rdr pass on en0 inet proto tcp from any to any port 5900 -> $en0_ip port 5901" >> /tmp/pf_vnc.conf
+      fi
+      sudo pfctl -ef /tmp/pf_vnc.conf 2>/dev/null || true
+      break
+    fi
+  fi
+  sleep 3
+done
+' >/dev/null 2>&1 &
 
 # 5. Set up local Web GUI accelerator (noVNC + websockify) on port 8900
 echo "[5/6] Setting up Web GUI accelerator (noVNC + websockify)..."
@@ -193,7 +246,8 @@ cat << EOF > /tmp/novnc/index.html
 </head>
 <body style="background:#1a1a1a;color:#eee;font-family:sans-serif;text-align:center;padding:50px;">
   <h2>Connecting to macOS Workstation...</h2>
-  <p><a href="vnc_lite.html?autoconnect=true&password=${PASSWORD}&scale=true&resize=scale" style="color:#4da6ff;">Click here if not redirected automatically</a></p>
+  <p><a href="vnc_lite.html?autoconnect=true&password=${PASSWORD}&scale=true&resize=scale" style="color:#4da6ff;">Click here for Lightweight Viewer</a></p>
+  <p><a href="vnc.html?autoconnect=true&password=${PASSWORD}&scale=true&resize=scale" style="color:#4da6ff;">Click here for Full UI Viewer</a></p>
 </body>
 </html>
 EOF
@@ -232,7 +286,7 @@ echo "CLOUDFLARE_URL=${CF_URL}" > /tmp/macos_env.txt
 
 echo "=========================================================="
 echo "⚡ macOS Workstation Environment Ready."
-echo "⚡ Native Screen Sharing: Port 5900 (Apple ARD)"
+echo "⚡ Native Screen Sharing: Port 5900 (Redirected to Bridge)"
 echo "⚡ Universal VNC Bridge:  Port 5901 (Remmina / TigerVNC)"
 echo "⚡ Web GUI (noVNC):       Port 8900"
 if [ -n "$CF_URL" ]; then

@@ -2,6 +2,7 @@
 """
 Universal RFB / VNC Compatibility Bridge for macOS Screen Sharing
 Author: Antigravity AI Engineering
+
 Bridges standard VNC clients (Remmina, TigerVNC, noVNC, etc.) to macOS Screen Sharing.
 macOS native Screen Sharing advertises Apple Remote Desktop (ARD) security types
 (30, 33, 36) which cause Remmina/libvncclient to fail with "Could not authenticate"
@@ -11,6 +12,7 @@ enabling seamless, zero-error connections with standard VNC passwords.
 """
 
 import sys
+import os
 import socket
 import select
 import threading
@@ -21,11 +23,22 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] [vnc_bridge] %(message)s'
 )
 
-LISTEN_HOST = '0.0.0.0'
-LISTEN_PORT = 5901
-TARGET_HOST = '127.0.0.1'
-TARGET_PORT = 5900
+LISTEN_HOST = os.environ.get('LISTEN_HOST', '0.0.0.0')
+LISTEN_PORT = int(os.environ.get('LISTEN_PORT', 5901))
+TARGET_HOST = os.environ.get('TARGET_HOST', '127.0.0.1')
+TARGET_PORT = int(os.environ.get('TARGET_PORT', 5900))
 BUFFER_SIZE = 65536
+
+
+def recv_exact(sock, n):
+    """Read exactly n bytes from a stream socket, or return what was read if closed."""
+    buf = bytearray()
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            break
+        buf.extend(chunk)
+    return bytes(buf)
 
 
 def handle_client(client_sock, client_addr):
@@ -34,16 +47,18 @@ def handle_client(client_sock, client_addr):
     try:
         server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_sock.settimeout(15)
+        server_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         server_sock.connect((TARGET_HOST, TARGET_PORT))
 
         # 1. Protocol Version Exchange
-        server_ver = server_sock.recv(12)
+        server_ver = recv_exact(server_sock, 12)
         if len(server_ver) < 12 or not server_ver.startswith(b'RFB '):
             logging.error(f"Invalid server version banner: {server_ver}")
             return
         client_sock.sendall(server_ver)
 
-        client_ver = client_sock.recv(12)
+        client_ver = recv_exact(client_sock, 12)
         if len(client_ver) < 12 or not client_ver.startswith(b'RFB '):
             logging.error(f"Invalid client version banner: {client_ver}")
             return
@@ -61,46 +76,49 @@ def handle_client(client_sock, client_addr):
 
         if client_major >= 3 and client_minor >= 7:
             # Server sends number of security types (1 byte) + types
-            num_types_raw = server_sock.recv(1)
+            num_types_raw = recv_exact(server_sock, 1)
             if not num_types_raw:
                 return
             num_types = num_types_raw[0]
             if num_types == 0:
                 # Connection failed from server side (error reason follows)
-                reason_len = int.from_bytes(server_sock.recv(4), 'big')
-                reason = server_sock.recv(reason_len)
-                client_sock.sendall(num_types_raw + int.to_bytes(reason_len, 4, 'big') + reason)
+                reason_len_raw = recv_exact(server_sock, 4)
+                if len(reason_len_raw) < 4:
+                    return
+                reason_len = int.from_bytes(reason_len_raw, 'big')
+                reason = recv_exact(server_sock, reason_len)
+                client_sock.sendall(num_types_raw + reason_len_raw + reason)
                 return
 
-            server_types = server_sock.recv(num_types)
+            server_types = recv_exact(server_sock, num_types)
             logging.info(f"Server offered security types: {list(server_types)}")
 
             # Offer ONLY Type 2 (Standard VNC Authentication) to client
             client_sock.sendall(bytes([1, 2]))
-            client_choice = client_sock.recv(1)
+            client_choice = recv_exact(client_sock, 1)
             logging.info(f"Client selected security type: {list(client_choice)}")
             server_sock.sendall(client_choice)
         else:
             # RFB 3.3 mode
-            sec_type = server_sock.recv(4)
+            sec_type = recv_exact(server_sock, 4)
             client_sock.sendall(sec_type)
 
         # 3. Authentication Challenge & Response
         # macOS VNC sends 16-byte random challenge
-        challenge = server_sock.recv(16)
+        challenge = recv_exact(server_sock, 16)
         if len(challenge) < 16:
             logging.error(f"Incomplete challenge from server: {len(challenge)} bytes")
             return
         client_sock.sendall(challenge)
 
-        response = client_sock.recv(16)
+        response = recv_exact(client_sock, 16)
         if len(response) < 16:
             logging.error(f"Incomplete response from client: {len(response)} bytes")
             return
         server_sock.sendall(response)
 
         # 4. Security Result
-        auth_result = server_sock.recv(4)
+        auth_result = recv_exact(server_sock, 4)
         if len(auth_result) < 4:
             logging.error("No auth result from server")
             return
@@ -110,9 +128,11 @@ def handle_client(client_sock, client_addr):
         if code != 0:
             logging.warning(f"VNC Authentication failed (code: {code})")
             if client_minor >= 8:
-                reason_len = int.from_bytes(server_sock.recv(4), 'big')
-                reason = server_sock.recv(reason_len)
-                client_sock.sendall(int.to_bytes(reason_len, 4, 'big') + reason)
+                reason_len_raw = recv_exact(server_sock, 4)
+                if len(reason_len_raw) == 4:
+                    reason_len = int.from_bytes(reason_len_raw, 'big')
+                    reason = recv_exact(server_sock, reason_len)
+                    client_sock.sendall(reason_len_raw + reason)
             return
 
         logging.info(f"VNC Authentication SUCCEEDED for {client_addr[0]}:{client_addr[1]}! Streaming session...")
@@ -171,7 +191,6 @@ def main():
     while True:
         try:
             client_sock, client_addr = server.accept()
-            client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             t = threading.Thread(target=handle_client, args=(client_sock, client_addr), daemon=True)
             t.start()
         except KeyboardInterrupt:
